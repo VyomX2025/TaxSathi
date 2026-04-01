@@ -1,5 +1,3 @@
-import { getGeminiApiKey } from "@/lib/server-env";
-
 export const runtime = "nodejs";
 
 export const maxDuration = 60;
@@ -14,34 +12,12 @@ Tax Saving Opportunities: N/A
 Missing Information: Retry
 Action Steps: Try again later`;
 
-const GEMINI_REST_URL =
-  "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent";
-
-type GeminiRestResponse = {
+type GeminiGenerateContentResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
-    finishReason?: string;
   }>;
-  promptFeedback?: unknown;
   error?: { code?: number; message?: string; status?: string };
 };
-
-function buildPrompt(message: string) {
-  return `
-You are TAXsathi, an Indian tax expert.
-
-User input:
-${message}
-
-Respond in this format:
-
-Summary:
-Estimated Tax:
-Tax Saving Opportunities:
-Missing Information:
-Action Steps:
-`.trim();
-}
 
 export async function POST(req: Request) {
   try {
@@ -56,49 +32,65 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = getGeminiApiKey();
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {
-      throw new Error("Missing GEMINI_API_KEY");
+      throw new Error("Missing API Key");
     }
 
-    const url = new URL(GEMINI_REST_URL);
-    url.searchParams.set("key", apiKey);
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `
+You are TAXsathi, an Indian tax expert.
 
-    const prompt = buildPrompt(message);
+User input:
+${message}
 
-    const geminiRes = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+Respond in format:
+
+Summary:
+Estimated Tax:
+Tax Saving Opportunities:
+Missing Information:
+Action Steps:
+`,
+                },
+              ],
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }],
-          },
-        ],
-      }),
-    });
+    );
 
-    const rawBody = await geminiRes.text();
-
-    if (!geminiRes.ok) {
+    let data: GeminiGenerateContentResponse;
+    try {
+      data = (await response.json()) as GeminiGenerateContentResponse;
+    } catch (parseErr) {
       console.error(
-        "[tax-agent] Gemini REST error:",
-        geminiRes.status,
-        geminiRes.statusText,
-        rawBody,
+        "[tax-agent] Failed to parse Gemini response as JSON:",
+        parseErr,
       );
-      throw new Error(`Gemini API ${geminiRes.status}: ${rawBody.slice(0, 500)}`);
+      throw parseErr;
     }
 
-    let data: GeminiRestResponse;
-    try {
-      data = JSON.parse(rawBody) as GeminiRestResponse;
-    } catch (parseErr) {
-      console.error("[tax-agent] Invalid JSON from Gemini:", rawBody);
-      throw parseErr;
+    console.log("Gemini RAW:", JSON.stringify(data));
+
+    if (!response.ok) {
+      console.error("[tax-agent] Gemini HTTP error:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: data,
+      });
+      throw new Error(`Gemini API HTTP ${response.status}`);
     }
 
     if (data.error) {
@@ -106,31 +98,16 @@ export async function POST(req: Request) {
       throw new Error(data.error.message ?? "Gemini API error");
     }
 
-    console.log("[tax-agent] Gemini full REST response:", rawBody);
-
     const text =
-      data.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text ?? "")
-        .join("") ?? "";
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from AI";
 
-    const trimmed = text.trim();
-
-    console.log("[tax-agent] Gemini response text:", trimmed);
-
-    if (!trimmed) {
-      console.warn("[tax-agent] Empty Gemini text; returning fallback JSON.");
-      return new Response(JSON.stringify({ text: FALLBACK_ERROR_TEXT }), {
-        status: 200,
-        headers: JSON_HEADERS,
-      });
-    }
-
-    return new Response(JSON.stringify({ text: trimmed }), {
+    return new Response(JSON.stringify({ text }), {
       status: 200,
       headers: JSON_HEADERS,
     });
   } catch (error) {
-    console.error("[tax-agent] FULL ERROR:", error);
+    console.error("FULL ERROR:", error);
     if (error instanceof Error) {
       console.error("[tax-agent] message:", error.message);
       console.error("[tax-agent] stack:", error.stack);
