@@ -180,15 +180,19 @@ export default function Home() {
         body: JSON.stringify({ message: payload }),
       });
       const data = (await response.json()) as {
-        response?: string;
+        text?: string;
         error?: string;
       };
 
-      if (!response.ok || !data.response) {
+      if (!response.ok) {
         throw new Error(data.error || "Failed to get a response.");
       }
 
-      const aiText = data.response.trim();
+      if (!data.text) {
+        throw new Error(data.error || "Failed to get a response.");
+      }
+
+      const aiText = data.text.trim();
       setMessages((prev) => [
         ...prev,
         {

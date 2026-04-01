@@ -1,4 +1,11 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  poweredByHeader: false,
+  reactStrictMode: true,
+  // Keep heavy server-only deps external for reliable API route bundles on Vercel
+  experimental: {
+    serverComponentsExternalPackages: ["@google/generative-ai", "pdf-parse"],
+  },
+};
 
 export default nextConfig;

@@ -2,6 +2,7 @@ import { PDFParse } from "pdf-parse";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_CHARS = 12_000;

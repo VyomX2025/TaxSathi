@@ -1,23 +1,18 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-const SYSTEM_PROMPT = `You are TAXsathi, an expert Indian tax consultant AI helping individuals and MSMEs.
+import { getGeminiApiKey } from "@/lib/server-env";
 
-Your responsibilities:
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
-* Understand user's income and financial data
-* Estimate tax liability (old vs new regime if possible)
-* Suggest deductions (80C, 80D, HRA, business expenses)
-* Identify missing inputs
-* Provide clear next steps
-
-Respond STRICTLY in this structured format:
-
-Summary:
-Estimated Tax:
-Tax Saving Opportunities:
-Missing Information:
-Action Steps:`;
+const FALLBACK_TEXT = `
+Summary: Unable to process request
+Estimated Tax: N/A
+Tax Saving Opportunities: N/A
+Missing Information: Try again
+Action Steps: Please retry
+`.trim();
 
 export async function POST(request: Request) {
   try {
@@ -30,39 +25,40 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "Server configuration error. Missing GEMINI_API_KEY." },
-        { status: 500 },
-      );
+      throw new Error("API key missing");
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    const result = await model.generateContent([
-      SYSTEM_PROMPT,
-      `User input: ${message.trim()}`,
-    ]);
+    const prompt = `
+You are TAXsathi, an Indian tax expert.
 
+User input:
+${message.trim()}
+
+Return:
+
+Summary:
+Estimated Tax:
+Tax Saving Opportunities:
+Missing Information:
+Action Steps:
+`;
+
+    const result = await model.generateContent(prompt);
     const text = result.response.text()?.trim();
+
     if (!text) {
-      return NextResponse.json(
-        { error: "No response generated. Please try again." },
-        { status: 502 },
-      );
+      return NextResponse.json({ text: FALLBACK_TEXT });
     }
 
-    return NextResponse.json({ response: text });
+    return NextResponse.json({ text });
   } catch (error) {
     console.error("Tax agent error:", error);
-    return NextResponse.json(
-      {
-        error:
-          "TAXsathi is temporarily unavailable. Please try again in a moment.",
-      },
-      { status: 500 },
-    );
+
+    return NextResponse.json({ text: FALLBACK_TEXT });
   }
 }
