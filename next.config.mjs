@@ -4,7 +4,7 @@ const nextConfig = {
   reactStrictMode: true,
   // Keep heavy server-only deps external for reliable API route bundles on Vercel
   experimental: {
-    serverComponentsExternalPackages: ["@google/generative-ai", "pdf-parse"],
+    serverComponentsExternalPackages: ["pdf-parse"],
   },
 };
 
