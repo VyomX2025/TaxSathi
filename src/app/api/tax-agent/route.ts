@@ -6,18 +6,11 @@ const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
 } as const;
 
-const FALLBACK_ERROR_TEXT = `Summary: Server error
+const FALLBACK_TEXT = `Summary: Server error fixed soon
 Estimated Tax: N/A
 Tax Saving Opportunities: N/A
 Missing Information: Retry
-Action Steps: Try again later`;
-
-type GeminiGenerateContentResponse = {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> };
-  }>;
-  error?: { code?: number; message?: string; status?: string };
-};
+Action Steps: Try again`;
 
 export async function POST(req: Request) {
   try {
@@ -34,22 +27,22 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {
-      throw new Error("Missing API Key");
+      throw new Error("Missing GEMINI_API_KEY");
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `
 You are TAXsathi, an Indian tax expert.
 
 User input:
@@ -63,59 +56,39 @@ Tax Saving Opportunities:
 Missing Information:
 Action Steps:
 `,
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
+              },
+            ],
+          },
+        ],
+      }),
+    });
 
-    let data: GeminiGenerateContentResponse;
-    try {
-      data = (await response.json()) as GeminiGenerateContentResponse;
-    } catch (parseErr) {
-      console.error(
-        "[tax-agent] Failed to parse Gemini response as JSON:",
-        parseErr,
-      );
-      throw parseErr;
-    }
-
-    console.log("Gemini RAW:", JSON.stringify(data));
+    const data = (await response.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
+    };
 
     if (!response.ok) {
-      console.error("[tax-agent] Gemini HTTP error:", {
-        status: response.status,
-        statusText: response.statusText,
-        body: data,
-      });
-      throw new Error(`Gemini API HTTP ${response.status}`);
-    }
-
-    if (data.error) {
-      console.error("[tax-agent] Gemini error field:", data.error);
-      throw new Error(data.error.message ?? "Gemini API error");
+      console.error("Gemini ERROR:", data);
+      throw new Error("Gemini failed");
     }
 
     const text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response from AI";
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
 
     return new Response(JSON.stringify({ text }), {
       status: 200,
       headers: JSON_HEADERS,
     });
   } catch (error) {
-    console.error("FULL ERROR:", error);
-    if (error instanceof Error) {
-      console.error("[tax-agent] message:", error.message);
-      console.error("[tax-agent] stack:", error.stack);
-    }
+    console.error("FINAL ERROR:", error);
 
-    return new Response(JSON.stringify({ text: FALLBACK_ERROR_TEXT }), {
-      status: 200,
-      headers: JSON_HEADERS,
-    });
+    return new Response(
+      JSON.stringify({
+        text: FALLBACK_TEXT,
+      }),
+      { status: 200, headers: JSON_HEADERS },
+    );
   }
 }
