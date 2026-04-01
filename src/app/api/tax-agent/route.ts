@@ -6,7 +6,7 @@ const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
 } as const;
 
-const FALLBACK_TEXT = `Summary: Server error fixed soon
+const FALLBACK_TEXT = `Summary: Server error
 Estimated Tax: N/A
 Tax Saving Opportunities: N/A
 Missing Information: Retry
@@ -30,48 +30,33 @@ export async function POST(req: Request) {
       throw new Error("Missing GEMINI_API_KEY");
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: message }],
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `
-You are TAXsathi, an Indian tax expert.
+    );
 
-User input:
-${message}
-
-Respond in format:
-
-Summary:
-Estimated Tax:
-Tax Saving Opportunities:
-Missing Information:
-Action Steps:
-`,
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    const data = (await response.json()) as {
+    const data = (await res.json()) as {
       candidates?: Array<{
         content?: { parts?: Array<{ text?: string }> };
       }>;
     };
 
-    if (!response.ok) {
-      console.error("Gemini ERROR:", data);
-      throw new Error("Gemini failed");
+    console.log("FULL GEMINI RESPONSE:", data);
+
+    if (!res.ok) {
+      throw new Error(JSON.stringify(data));
     }
 
     const text =
@@ -81,8 +66,8 @@ Action Steps:
       status: 200,
       headers: JSON_HEADERS,
     });
-  } catch (error) {
-    console.error("FINAL ERROR:", error);
+  } catch (err) {
+    console.error("FINAL ERROR:", err);
 
     return new Response(
       JSON.stringify({
